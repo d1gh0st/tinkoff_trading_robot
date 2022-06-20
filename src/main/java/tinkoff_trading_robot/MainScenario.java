@@ -29,7 +29,7 @@ public class MainScenario {
 
         //String instrumentFigi = "";
 
-        var token = "t.vMm25hHHce-dNZtnSL8DLnKfLK7AU50YoyRYeU48AsUIorlxLpo7Y1ceEySJhWilb4y3ncXSjjBdVk3HcRLRSg";
+        var token = "";
         api = InvestApi.create(token);
 
         Strategy strategy = new Strategy(api);
