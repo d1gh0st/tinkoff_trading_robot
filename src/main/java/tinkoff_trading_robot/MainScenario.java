@@ -8,6 +8,9 @@ import ru.tinkoff.piapi.core.models.Money;
 import ru.tinkoff.piapi.core.models.Position;
 import tinkoff_trading_robot.classes.Strategy;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -30,11 +33,23 @@ public class MainScenario {
         //String instrumentFigi = "";
 
         var token = "";
-        api = InvestApi.create(token);
-
-        Strategy strategy = new Strategy(api);
 
         try {
+
+            File file = new File("D:/tinkoff_trading_robot/.idea/file.txt");
+            FileReader fr = new FileReader(file);
+            BufferedReader reader = new BufferedReader(fr);
+            String line = reader.readLine();
+            while (line != null) {
+                token = line;
+                line = reader.readLine();
+            }
+
+
+            api = InvestApi.create(token);
+
+            Strategy strategy = new Strategy(api);
+
             while (true) {
                 log.info("Run CheckSellStrategy1");
                 strategy.CheckSellStrategy();

@@ -3,7 +3,9 @@ package tinkoff_trading_robot.classes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.tinkoff.piapi.contract.v1.*;
+import ru.tinkoff.piapi.core.InstrumentsService;
 import ru.tinkoff.piapi.core.InvestApi;
+import ru.tinkoff.piapi.core.UsersService;
 import ru.tinkoff.piapi.core.models.Money;
 import ru.tinkoff.piapi.core.models.Position;
 import tinkoff_trading_robot.MainScenario;
@@ -44,23 +46,24 @@ public class ApiMethods {
     public boolean CheckAvailableMoney(String currency, double sharePrice)
     {
         log.debug("CheckAvailableMoney");
-        var accounts = api.getUserService().getAccountsSync();
-        var mainAccount = accounts.get(0).getId();
+        UsersService usersService = api.getUserService();
+        if(usersService != null) {
+            var accounts = usersService.getAccountsSync();
+            var mainAccount = accounts.get(0).getId();
 
-        var positions = api.getOperationsService().getPositionsSync(mainAccount);
+            var positions = api.getOperationsService().getPositionsSync(mainAccount);
 
 
-        var moneyList = positions.getMoney();
-        for (Money moneyValue : moneyList) {
-            if(currency.equals(moneyValue.getCurrency().getCurrencyCode())) {
-                log.info("currency: {}, value: {}", moneyValue.getCurrency(), moneyValue.getValue());
-                double balance = moneyValue.getValue().doubleValue();
-                balance /= 3;
-                if(balance > sharePrice)
-                {
-                    return true;
+            var moneyList = positions.getMoney();
+            for (Money moneyValue : moneyList) {
+                if (currency.equals(moneyValue.getCurrency().getCurrencyCode())) {
+                    log.info("currency: {}, value: {}", moneyValue.getCurrency(), moneyValue.getValue());
+                    double balance = moneyValue.getValue().doubleValue();
+                    balance /= 3;
+                    if (balance > sharePrice) {
+                        return true;
+                    } else return false;
                 }
-                else return false;
             }
         }
 
@@ -70,21 +73,27 @@ public class ApiMethods {
     public void BuyShareByMarketPrice(String figi)
     {
         log.debug("BuyShareByMarketPrice");
-        var accounts = api.getUserService().getAccountsSync();
-        var mainAccount = accounts.get(0).getId();
+        UsersService usersService = api.getUserService();
+        if(usersService != null) {
+            var accounts = usersService.getAccountsSync();
+            var mainAccount = accounts.get(0).getId();
 
-        var lastPrice = api.getMarketDataService().getLastPricesSync(List.of(figi)).get(0).getPrice();
-        var minPriceIncrement = api.getInstrumentsService().getInstrumentByFigiSync(figi).getMinPriceIncrement();
-        var price = Quotation.newBuilder().setUnits(lastPrice.getUnits() - minPriceIncrement.getUnits())
-                .setNano(lastPrice.getNano() - minPriceIncrement.getNano()).build();
+            var lastPrice = api.getMarketDataService().getLastPricesSync(List.of(figi)).get(0).getPrice();
+            InstrumentsService service = api.getInstrumentsService();
+            if (service != null) {
+                var minPriceIncrement = service.getInstrumentByFigiSync(figi).getMinPriceIncrement();
+                var price = Quotation.newBuilder().setUnits(lastPrice.getUnits() - minPriceIncrement.getUnits())
+                        .setNano(lastPrice.getNano() - minPriceIncrement.getNano()).build();
 
-        log.info("Last price - " + lastPrice.getUnits() + "," + lastPrice.getNano());
-        log.info("Buy price -  " + price.getUnits() + "," + price.getNano());
+                log.info("Last price - " + lastPrice.getUnits() + "," + lastPrice.getNano());
+                log.info("Buy price -  " + price.getUnits() + "," + price.getNano());
 
-        var orderId = api.getOrdersService()
-                .postOrderSync(figi, 1, price, OrderDirection.ORDER_DIRECTION_BUY, mainAccount, OrderType.ORDER_TYPE_MARKET,
-                        UUID.randomUUID().toString()).getOrderId();
-        log.info("Buy order id: {}",orderId);
+                var orderId = api.getOrdersService()
+                        .postOrderSync(figi, 1, price, OrderDirection.ORDER_DIRECTION_BUY, mainAccount, OrderType.ORDER_TYPE_MARKET,
+                                UUID.randomUUID().toString()).getOrderId();
+                log.info("Buy order id: {}", orderId);
+            }
+        }
     }
 
     public Double GetAverageMonthPrice(String figi)
@@ -105,14 +114,17 @@ public class ApiMethods {
     {
         log.debug("GetShares");
         List<Position> result = new ArrayList<>();
-        var accounts = api.getUserService().getAccountsSync();
-        var mainAccount = accounts.get(0).getId();
-        var portfolio = api.getOperationsService().getPortfolioSync(mainAccount);
-        var positions = portfolio.getPositions();
-        //log.info("amount {} positions", positions.size());
-        for (int i = 0; i < positions.size(); i++) {
-            var position = positions.get(i);
-            result.add(position);
+        UsersService usersService = api.getUserService();
+        if(usersService != null) {
+            var accounts = usersService.getAccountsSync();
+            var mainAccount = accounts.get(0).getId();
+            var portfolio = api.getOperationsService().getPortfolioSync(mainAccount);
+            var positions = portfolio.getPositions();
+            //log.info("amount {} positions", positions.size());
+            for (int i = 0; i < positions.size(); i++) {
+                var position = positions.get(i);
+                result.add(position);
+            }
         }
         return result;
     }
@@ -120,15 +132,16 @@ public class ApiMethods {
     public void CancelStopOrders(String figi)
     {
         log.debug("CancelStopOrders");
-        var accounts = api.getUserService().getAccountsSync();
-        var mainAccount = accounts.get(0).getId();
-        var stopOrders = api.getStopOrdersService().getStopOrdersSync(mainAccount);
-        for(StopOrder order : stopOrders)
-        {
-            if(order.getFigi().equals(figi))
-            {
-                api.getStopOrdersService().cancelStopOrder(mainAccount, order.getStopOrderId());
-                break;
+        UsersService usersService = api.getUserService();
+        if(usersService != null) {
+            var accounts = usersService.getAccountsSync();
+            var mainAccount = accounts.get(0).getId();
+            var stopOrders = api.getStopOrdersService().getStopOrdersSync(mainAccount);
+            for (StopOrder order : stopOrders) {
+                if (order.getFigi().equals(figi)) {
+                    api.getStopOrdersService().cancelStopOrder(mainAccount, order.getStopOrderId());
+                    break;
+                }
             }
         }
     }
@@ -136,16 +149,17 @@ public class ApiMethods {
     public BigDecimal getStopOrderPrice(String figi)
     {
         log.debug("getStopOrderPrice");
-        var accounts = api.getUserService().getAccountsSync();
-        var mainAccount = accounts.get(0).getId();
-        var stopOrders = api.getStopOrdersService().getStopOrdersSync(mainAccount);
-        for(StopOrder order : stopOrders)
-        {
-            if(order.getFigi().equals(figi))
-            {
-                MoneyValue moneyValue = order.getStopPrice();
-                BigDecimal price = moneyValue.getUnits() == 0 && moneyValue.getNano() == 0 ? BigDecimal.ZERO : BigDecimal.valueOf(moneyValue.getUnits()).add(BigDecimal.valueOf(moneyValue.getNano(), 9));
-                return price;
+        UsersService usersService = api.getUserService();
+        if(usersService != null) {
+            var accounts = usersService.getAccountsSync();
+            var mainAccount = accounts.get(0).getId();
+            var stopOrders = api.getStopOrdersService().getStopOrdersSync(mainAccount);
+            for (StopOrder order : stopOrders) {
+                if (order.getFigi().equals(figi)) {
+                    MoneyValue moneyValue = order.getStopPrice();
+                    BigDecimal price = moneyValue.getUnits() == 0 && moneyValue.getNano() == 0 ? BigDecimal.ZERO : BigDecimal.valueOf(moneyValue.getUnits()).add(BigDecimal.valueOf(moneyValue.getNano(), 9));
+                    return price;
+                }
             }
         }
         return null;
@@ -154,15 +168,16 @@ public class ApiMethods {
     public boolean CheckStopOrder(String figi)
     {
         log.debug("CheckStopOrder");
-        var accounts = api.getUserService().getAccountsSync();
-        var mainAccount = accounts.get(0).getId();
-        var stopOrders = api.getStopOrdersService().getStopOrdersSync(mainAccount);
-        for(StopOrder order : stopOrders)
-        {
-            if(order.getFigi().equals(figi))
-            {
+        UsersService usersService = api.getUserService();
+        if(usersService != null) {
+            var accounts = usersService.getAccountsSync();
+            var mainAccount = accounts.get(0).getId();
+            var stopOrders = api.getStopOrdersService().getStopOrdersSync(mainAccount);
+            for (StopOrder order : stopOrders) {
+                if (order.getFigi().equals(figi)) {
 
-                return true;
+                    return true;
+                }
             }
         }
         return false;
@@ -176,36 +191,47 @@ public class ApiMethods {
     public void SetupStopMarket(InvestApi api, String figi, BigDecimal price, long quantity)
     {
         log.debug("SetupStopMarket");
-        var accounts = api.getUserService().getAccountsSync();
-        var mainAccount = accounts.get(0).getId();
-        BigDecimal new_price = BigDecimal.valueOf(0);
-        var minPriceIncrement = api.getInstrumentsService().getInstrumentByFigiSync(figi).getMinPriceIncrement();
-        BigDecimal bigDecimal = minPriceIncrement.getUnits() == 0 && minPriceIncrement.getNano() == 0 ? BigDecimal.ZERO : BigDecimal.valueOf(minPriceIncrement.getUnits()).add(BigDecimal.valueOf(minPriceIncrement.getNano(), 9));
-        while (new_price.doubleValue() < price.doubleValue()) new_price = new_price.add(bigDecimal);
-        price = new_price;
-        long units = price.longValue();
-        BigDecimal modulo = price.subtract(BigDecimal.valueOf(units));
-        int nanos = (modulo.multiply(BigDecimal.valueOf(1000000000))).intValue();
-        var stopPrice = Quotation.newBuilder().setUnits(units)
-                .setNano(nanos).build();
-        log.info("Quantity: {}", quantity);
-        var stopOrderId = api.getStopOrdersService()
-                .postStopOrderGoodTillDateSync(figi, 1, stopPrice, stopPrice, StopOrderDirection.STOP_ORDER_DIRECTION_SELL,
-                        mainAccount, StopOrderType.STOP_ORDER_TYPE_STOP_LOSS, Instant.now().plus(30, ChronoUnit.DAYS));
-        log.info("Stop-order id: {}", stopOrderId);
+        UsersService usersService = api.getUserService();
+        if(usersService != null) {
+            var accounts = usersService.getAccountsSync();
+            var mainAccount = accounts.get(0).getId();
+            BigDecimal new_price = BigDecimal.valueOf(0);
+            InstrumentsService service = api.getInstrumentsService();
+            if (service != null) {
+                var minPriceIncrement = service.getInstrumentByFigiSync(figi).getMinPriceIncrement();
+                BigDecimal bigDecimal = minPriceIncrement.getUnits() == 0 && minPriceIncrement.getNano() == 0 ? BigDecimal.ZERO : BigDecimal.valueOf(minPriceIncrement.getUnits()).add(BigDecimal.valueOf(minPriceIncrement.getNano(), 9));
+                while (new_price.doubleValue() < price.doubleValue()) new_price = new_price.add(bigDecimal);
+                price = new_price;
+                long units = price.longValue();
+                BigDecimal modulo = price.subtract(BigDecimal.valueOf(units));
+                int nanos = (modulo.multiply(BigDecimal.valueOf(1000000000))).intValue();
+                var stopPrice = Quotation.newBuilder().setUnits(units)
+                        .setNano(nanos).build();
+                log.info("Quantity: {}", quantity);
+                var stopOrderId = api.getStopOrdersService()
+                        .postStopOrderGoodTillDateSync(figi, 1, stopPrice, stopPrice, StopOrderDirection.STOP_ORDER_DIRECTION_SELL,
+                                mainAccount, StopOrderType.STOP_ORDER_TYPE_STOP_LOSS, Instant.now().plus(30, ChronoUnit.DAYS));
+                log.info("Stop-order id: {}", stopOrderId);
+            }
+        }
     }
 
     public BigDecimal getDividentAmount(String figi)
     {
         log.debug("getDividentAmount");
         BigDecimal amount = null;
-        Instrument ins = api.getInstrumentsService().getInstrumentByFigiSync(figi);
-        if(ins.getInstrumentType().equals("share")) {
-            var dividends =
-                    api.getInstrumentsService().getDividendsSync(figi, Instant.now(), Instant.now().plus(30, ChronoUnit.DAYS));
-            MoneyValue moneyValue = dividends.get(0).getDividendNet();
-            amount = moneyValue.getUnits() == 0 && moneyValue.getNano() == 0 ? BigDecimal.ZERO : BigDecimal.valueOf(moneyValue.getUnits()).add(BigDecimal.valueOf(moneyValue.getNano(), 9));
-            amount = amount.multiply(BigDecimal.valueOf(ins.getLot()));
+        InstrumentsService service = api.getInstrumentsService();
+        if(service != null) {
+            Instrument ins = api.getInstrumentsService().getInstrumentByFigiSync(figi);
+            if (ins.getInstrumentType().equals("share")) {
+                var dividends =
+                        api.getInstrumentsService().getDividendsSync(figi, Instant.now(), Instant.now().plus(30, ChronoUnit.DAYS));
+                if (dividends.size() > 0) {
+                    MoneyValue moneyValue = dividends.get(0).getDividendNet();
+                    amount = moneyValue.getUnits() == 0 && moneyValue.getNano() == 0 ? BigDecimal.ZERO : BigDecimal.valueOf(moneyValue.getUnits()).add(BigDecimal.valueOf(moneyValue.getNano(), 9));
+                    amount = amount.multiply(BigDecimal.valueOf(ins.getLot()));
+                }
+            }
         }
         return amount;
     }
@@ -213,15 +239,18 @@ public class ApiMethods {
     public boolean CheckDividendDate(String figi)
     {
         log.debug("CheckDividendDate");
-        Instrument ins = api.getInstrumentsService().getInstrumentByFigiSync(figi);
-        if(ins.getInstrumentType().equals("share")) {
-            var dividends =
-                    api.getInstrumentsService().getDividendsSync(figi, Instant.now(), Instant.now().plus(30, ChronoUnit.DAYS));
-            for (Dividend dividend : dividends) {
-                log.info("Dividends for ticker: {}. Amount: {}, Currency: {}, Date: {}", ins.getTicker(),
-                        dividend.getDividendNet().getUnits() + "," + dividend.getDividendNet().getNano(),
-                        dividend.getDividendNet().getCurrency(), dividend.getRecordDate().getSeconds());
-                return true;
+        InstrumentsService service = api.getInstrumentsService();
+        if(service != null) {
+            Instrument ins = service.getInstrumentByFigiSync(figi);
+            if (ins.getInstrumentType().equals("share")) {
+                var dividends =
+                        api.getInstrumentsService().getDividendsSync(figi, Instant.now(), Instant.now().plus(30, ChronoUnit.DAYS));
+                for (Dividend dividend : dividends) {
+                    log.info("Dividends for ticker: {}. Amount: {}, Currency: {}, Date: {}", ins.getTicker(),
+                            dividend.getDividendNet().getUnits() + "," + dividend.getDividendNet().getNano(),
+                            dividend.getDividendNet().getCurrency(), dividend.getRecordDate().getSeconds());
+                    return true;
+                }
             }
         }
         return false;
