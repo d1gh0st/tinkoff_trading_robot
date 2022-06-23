@@ -2,29 +2,18 @@ package tinkoff_trading_robot;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import ru.tinkoff.piapi.contract.v1.*;
 import ru.tinkoff.piapi.core.InvestApi;
-import ru.tinkoff.piapi.core.models.Money;
-import ru.tinkoff.piapi.core.models.Position;
 import tinkoff_trading_robot.classes.Strategy;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
-import static ru.tinkoff.piapi.core.utils.DateUtils.timestampToString;
-import static ru.tinkoff.piapi.core.utils.MapperUtils.quotationToBigDecimal;
 
 public class MainScenario {
 
     static final Logger log = LoggerFactory.getLogger(MainScenario.class);
+    public static String telegram_token = "";
+    public static String chat_id = "";
 
     private static InvestApi api;
 
@@ -32,6 +21,7 @@ public class MainScenario {
 
         //String instrumentFigi = "";
 
+        //Strategy.sendToTelegram();
         var token = "";
 
         try {
@@ -41,7 +31,12 @@ public class MainScenario {
             BufferedReader reader = new BufferedReader(fr);
             String line = reader.readLine();
             while (line != null) {
-                token = line;
+                if(line.contains("tinkoff_token"))
+                    token = line;
+                if(line.contains("telegram_token"))
+                    telegram_token = line;
+                if(line.contains("chat_id"))
+                    chat_id = line;
                 line = reader.readLine();
             }
 
@@ -50,9 +45,14 @@ public class MainScenario {
 
             Strategy strategy = new Strategy(api);
 
+
+
             while (true) {
-                log.info("Run CheckSellStrategy1");
+                log.info("Run CheckSellStrategy");
                 strategy.CheckSellStrategy();
+                log.info("=================================================================================================================");
+                log.info("Run CheckBuyStrategy");
+                strategy.BuyStrategy();
                 log.info("=================================================================================================================");
                 Thread.sleep(60000);
             }

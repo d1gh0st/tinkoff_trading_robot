@@ -1,14 +1,15 @@
 package tinkoff_trading_robot.classes;
 
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.tinkoff.piapi.contract.v1.*;
 import ru.tinkoff.piapi.core.InstrumentsService;
 import ru.tinkoff.piapi.core.InvestApi;
+import ru.tinkoff.piapi.core.OperationsService;
 import ru.tinkoff.piapi.core.UsersService;
 import ru.tinkoff.piapi.core.models.Money;
 import ru.tinkoff.piapi.core.models.Position;
-import tinkoff_trading_robot.MainScenario;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import static ru.tinkoff.piapi.core.utils.DateUtils.timestampToString;
 import static ru.tinkoff.piapi.core.utils.MapperUtils.quotationToBigDecimal;
 
 public class ApiMethods {
@@ -70,6 +72,8 @@ public class ApiMethods {
         return false;
     }
 
+
+
     public void BuyShareByMarketPrice(String figi)
     {
         log.debug("BuyShareByMarketPrice");
@@ -110,23 +114,88 @@ public class ApiMethods {
         return averageClosePrice;
     }
 
+
+    public List<BigDecimal> getDaysPrices(Share share)
+    {
+
+        List<BigDecimal> prices = new ArrayList<>();
+        try {
+            var candlesOneDays = api.getMarketDataService()
+                    .getCandlesSync(share.getFigi(), Instant.now().minus(14, ChronoUnit.DAYS), Instant.now(),
+                            CandleInterval.CANDLE_INTERVAL_DAY);
+            long volume = 0;
+            if (candlesOneDays.size() > 0) {
+                for (HistoricCandle candle : candlesOneDays) {
+                    volume += candle.getVolume();
+                    prices.add(quotationToBigDecimal(candle.getClose()));
+                }
+                //log.info("ticker: {}, volume: {}",share.getTicker(),volume);
+                if(volume < 100000)
+                {
+                    log.debug("ticker: {}, low liquidity",share.getTicker());
+                    prices.clear();
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        return prices;
+    }
+
+    public BigDecimal getLastPrice(Share share)
+    {
+        List<String> list = new ArrayList<>();
+        list.add(share.getFigi());
+        BigDecimal result = BigDecimal.valueOf(0);
+        try {
+            var lastPrices = api.getMarketDataService().getLastPricesSync(list);
+            for (LastPrice lastPrice : lastPrices) {
+                var price = quotationToBigDecimal(lastPrice.getPrice());
+                result = price;
+                var time = timestampToString(lastPrice.getTime());
+                log.debug("last price for the instrument {}, price: {}, time of refreshing: {}", share.getTicker(), price, time);
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        return result;
+    }
+
     public List<Position> GetShares()
     {
         log.debug("GetShares");
         List<Position> result = new ArrayList<>();
-        UsersService usersService = api.getUserService();
-        if(usersService != null) {
-            var accounts = usersService.getAccountsSync();
-            var mainAccount = accounts.get(0).getId();
-            var portfolio = api.getOperationsService().getPortfolioSync(mainAccount);
-            var positions = portfolio.getPositions();
-            //log.info("amount {} positions", positions.size());
-            for (int i = 0; i < positions.size(); i++) {
-                var position = positions.get(i);
-                result.add(position);
+        try {
+            UsersService usersService = api.getUserService();
+            if (usersService != null) {
+                var accounts = usersService.getAccountsSync();
+                var mainAccount = accounts.get(0).getId();
+                OperationsService operationsService = api.getOperationsService();
+                if (operationsService != null) {
+                    var portfolio = operationsService.getPortfolioSync(mainAccount);
+                    var positions = portfolio.getPositions();
+                    //log.info("amount {} positions", positions.size());
+                    for (int i = 0; i < positions.size(); i++) {
+                        var position = positions.get(i);
+                        result.add(position);
+                    }
+                }
             }
         }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
         return result;
+    }
+
+    public List<Share> GetAllShares()
+    {
+        return api.getInstrumentsService().getTradableSharesSync();
     }
 
     public void CancelStopOrders(String figi)
@@ -238,6 +307,13 @@ public class ApiMethods {
 
     public boolean CheckDividendDate(String figi)
     {
+        try {
+            Thread.sleep(1000);
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
         log.debug("CheckDividendDate");
         InstrumentsService service = api.getInstrumentsService();
         if(service != null) {
