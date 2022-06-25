@@ -129,10 +129,14 @@ public class ApiMethods {
                     volume += candle.getVolume();
                     prices.add(quotationToBigDecimal(candle.getClose()));
                 }
-                //log.info("ticker: {}, volume: {}",share.getTicker(),volume);
-                if(volume < 100000)
+                log.info("ticker: {}, volume: {}",share.getTicker(),volume);
+                if(volume < 100000 && share.getCurrency().equals("RUB"))
                 {
-                    log.debug("ticker: {}, low liquidity",share.getTicker());
+                    //log.debug("ticker: {}, low liquidity",share.getTicker());
+                    prices.clear();
+                }
+                if(volume < 1000000 && !share.getCurrency().equals("RUB"))
+                {
                     prices.clear();
                 }
             }
@@ -200,18 +204,24 @@ public class ApiMethods {
 
     public void CancelStopOrders(String figi)
     {
-        log.debug("CancelStopOrders");
-        UsersService usersService = api.getUserService();
-        if(usersService != null) {
-            var accounts = usersService.getAccountsSync();
-            var mainAccount = accounts.get(0).getId();
-            var stopOrders = api.getStopOrdersService().getStopOrdersSync(mainAccount);
-            for (StopOrder order : stopOrders) {
-                if (order.getFigi().equals(figi)) {
-                    api.getStopOrdersService().cancelStopOrder(mainAccount, order.getStopOrderId());
-                    break;
+        try {
+            log.debug("CancelStopOrders");
+            UsersService usersService = api.getUserService();
+            if (usersService != null) {
+                var accounts = usersService.getAccountsSync();
+                var mainAccount = accounts.get(0).getId();
+                var stopOrders = api.getStopOrdersService().getStopOrdersSync(mainAccount);
+                for (StopOrder order : stopOrders) {
+                    if (order.getFigi().equals(figi)) {
+                        api.getStopOrdersService().cancelStopOrder(mainAccount, order.getStopOrderId());
+                        break;
+                    }
                 }
             }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
         }
     }
 
@@ -236,18 +246,24 @@ public class ApiMethods {
 
     public boolean CheckStopOrder(String figi)
     {
-        log.debug("CheckStopOrder");
-        UsersService usersService = api.getUserService();
-        if(usersService != null) {
-            var accounts = usersService.getAccountsSync();
-            var mainAccount = accounts.get(0).getId();
-            var stopOrders = api.getStopOrdersService().getStopOrdersSync(mainAccount);
-            for (StopOrder order : stopOrders) {
-                if (order.getFigi().equals(figi)) {
+        try {
+            log.debug("CheckStopOrder");
+            UsersService usersService = api.getUserService();
+            if (usersService != null) {
+                var accounts = usersService.getAccountsSync();
+                var mainAccount = accounts.get(0).getId();
+                var stopOrders = api.getStopOrdersService().getStopOrdersSync(mainAccount);
+                for (StopOrder order : stopOrders) {
+                    if (order.getFigi().equals(figi)) {
 
-                    return true;
+                        return true;
+                    }
                 }
             }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
         }
         return false;
     }
