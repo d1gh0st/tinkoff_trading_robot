@@ -46,6 +46,27 @@ public class ApiMethods {
         return account;
     }
 
+    public boolean checkTradingStatus(String figi)
+    {
+        boolean result = false;
+        try {
+            var tradingStatus = api.getMarketDataService().getTradingStatusSync(figi);
+            if(tradingStatus.getTradingStatus() == SecurityTradingStatus.SECURITY_TRADING_STATUS_NORMAL_TRADING) result = true;
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            try {
+                Thread.sleep(60000);
+            }
+            catch (Exception e1)
+            {
+                e1.printStackTrace();
+            }
+        }
+        return result;
+    }
+
     public BigDecimal getCurrentBuyPrice(String figi)
     {
         log.debug("getCurrentBuyPrice");
@@ -139,6 +160,32 @@ public class ApiMethods {
                         .postOrderSync(figi, 1, price, OrderDirection.ORDER_DIRECTION_BUY, mainAccount, OrderType.ORDER_TYPE_MARKET,
                                 UUID.randomUUID().toString()).getOrderId();
                 log.info("Buy order id: {}", orderId);
+            }
+        }
+    }
+
+    public void SellShareByMarketPrice(String figi)
+    {
+        log.debug("SellShareByMarketPrice");
+        UsersService usersService = api.getUserService();
+        if(usersService != null) {
+            var accounts = usersService.getAccountsSync();
+            var mainAccount = account;
+
+            var lastPrice = api.getMarketDataService().getLastPricesSync(List.of(figi)).get(0).getPrice();
+            InstrumentsService service = api.getInstrumentsService();
+            if (service != null) {
+                var minPriceIncrement = service.getInstrumentByFigiSync(figi).getMinPriceIncrement();
+                var price = Quotation.newBuilder().setUnits(lastPrice.getUnits() - minPriceIncrement.getUnits())
+                        .setNano(lastPrice.getNano() - minPriceIncrement.getNano()).build();
+
+                log.info("Last price - " + lastPrice.getUnits() + "," + lastPrice.getNano());
+                log.info("Sell price -  " + price.getUnits() + "," + price.getNano());
+
+                var orderId = api.getOrdersService()
+                        .postOrderSync(figi, 1, price, OrderDirection.ORDER_DIRECTION_SELL, mainAccount, OrderType.ORDER_TYPE_MARKET,
+                                UUID.randomUUID().toString()).getOrderId();
+                log.info("Sell order id: {}", orderId);
             }
         }
     }
@@ -361,6 +408,7 @@ public class ApiMethods {
                 e.printStackTrace();
                 try {
                     Thread.sleep(60000);
+                    log.info("Waiting..");
                 }
                 catch (Exception e1)
                 {
@@ -475,6 +523,34 @@ public class ApiMethods {
     {
         return null;
     }*/
+
+
+    public void SetupBuyStopMarket(InvestApi api, String figi, BigDecimal price, long quantity) {
+        log.debug("SetupStopMarket");
+        UsersService usersService = api.getUserService();
+        if (usersService != null) {
+            var accounts = usersService.getAccountsSync();
+            var mainAccount = account;
+            BigDecimal new_price = BigDecimal.valueOf(0);
+            InstrumentsService service = api.getInstrumentsService();
+            if (service != null) {
+                var minPriceIncrement = service.getInstrumentByFigiSync(figi).getMinPriceIncrement();
+                BigDecimal bigDecimal = minPriceIncrement.getUnits() == 0 && minPriceIncrement.getNano() == 0 ? BigDecimal.ZERO : BigDecimal.valueOf(minPriceIncrement.getUnits()).add(BigDecimal.valueOf(minPriceIncrement.getNano(), 9));
+                while (new_price.doubleValue() < price.doubleValue()) new_price = new_price.add(bigDecimal);
+                price = new_price;
+                long units = price.longValue();
+                BigDecimal modulo = price.subtract(BigDecimal.valueOf(units));
+                int nanos = (modulo.multiply(BigDecimal.valueOf(1000000000))).intValue();
+                var stopPrice = Quotation.newBuilder().setUnits(units)
+                        .setNano(nanos).build();
+                log.info("Quantity: {}", quantity);
+                var stopOrderId = api.getStopOrdersService()
+                        .postStopOrderGoodTillDateSync(figi, quantity, stopPrice, stopPrice, StopOrderDirection.STOP_ORDER_DIRECTION_BUY,
+                                mainAccount, StopOrderType.STOP_ORDER_TYPE_STOP_LOSS, Instant.now().plus(30, ChronoUnit.DAYS));
+                log.info("Stop-order id: {}", stopOrderId);
+            }
+        }
+    }
 
     public void SetupStopMarket(InvestApi api, String figi, BigDecimal price, long quantity)
     {

@@ -9,6 +9,7 @@ import tinkoff_trading_robot.classes.Strategy;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.util.Date;
 
 public class MainScenario {
 
@@ -63,15 +64,32 @@ public class MainScenario {
 
             //CERN
             //CSTX
-            strategyMain.CheckLinearRegression2(args[1]);
+            //strategyIIS.CheckLinearRegression2("rub");
+            //strategyMain.CheckLinearRegression2("usd");
+
 
             Runnable task1 = new Runnable() {
                 public void run() {
 
                     while (true) {
                         try {
+                            Date date = new Date();
+                            log.info("Date - {}", date);
+                            int h = date.getHours();
+                            int min = date.getMinutes();
+                            if((h == 11 || h == 17) && min == 1)
+                            {
+                                strategyIIS.CheckLinearRegression2("rub");
+                            }
+                            if((h == 16 || h == 20) && min == 1)
+                            {
+                                strategyMain.CheckLinearRegression2("usd");
+                            }
+                            strategyIIS.CheckTrends();
+                            log.info("CheckTrends  IIS Heartbeat");
+                            Thread.sleep(10000);
+                            log.info("CheckTrends  Main Heartbeat");
                             strategyMain.CheckTrends();
-                            log.info("CheckTrends Heartbeat");
                             Thread.sleep(10000);
                         } catch (InterruptedException e) {
                             e.printStackTrace();
@@ -146,17 +164,25 @@ public class MainScenario {
             if(args[0].equals("sell"))
             {
                 while (true) {
-                    log.info("Run Main CheckSellStrategy");
-                    strategyMain.CheckSellStrategy();
-                    log.info("=================================================================================================================");
-                    //log.info("Run CheckBuyStrategy");
-                    //strategy.BuyStrategy();
-                    //log.info("=================================================================================================================");
-                    Thread.sleep(60000);
-                    log.info("Run IIS CheckSellStrategy");
-                    strategyIIS.CheckSellStrategy();
-                    log.info("=================================================================================================================");
-                    Thread.sleep(60000);
+                    Date date = new Date();
+                    //log.info("Date - {}", date);
+                    int h = date.getHours();
+                    if(h > 14) {
+                        log.info("Run Main CheckSellStrategy");
+                        strategyMain.CheckSellStrategy();
+                        log.info("=================================================================================================================");
+
+                        //log.info("Run CheckBuyStrategy");
+                        //strategy.BuyStrategy();
+                        //log.info("=================================================================================================================");
+                        Thread.sleep(60000);
+                    }
+                    if(h > 9 && h < 19) {
+                        log.info("Run IIS CheckSellStrategy");
+                        strategyIIS.CheckSellStrategy();
+                        log.info("=================================================================================================================");
+                        Thread.sleep(60000);
+                    }
                 }
             }
             /*if(args[0].equals("buy"))
