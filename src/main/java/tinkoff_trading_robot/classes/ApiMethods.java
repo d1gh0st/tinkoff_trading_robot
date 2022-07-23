@@ -11,6 +11,7 @@ import ru.tinkoff.piapi.core.UsersService;
 import ru.tinkoff.piapi.core.models.Money;
 import ru.tinkoff.piapi.core.models.Position;
 
+import javax.swing.plaf.TableHeaderUI;
 import java.math.BigDecimal;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -69,6 +70,14 @@ public class ApiMethods {
 
     public BigDecimal getCurrentBuyPrice(String figi)
     {
+        try
+        {
+            Thread.sleep(100);
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
         log.debug("getCurrentBuyPrice");
         BigDecimal price = BigDecimal.valueOf(0);
         try {
@@ -83,6 +92,14 @@ public class ApiMethods {
         catch (Exception e)
         {
             e.printStackTrace();
+            try
+            {
+                Thread.sleep(60000);
+            }
+            catch (Exception e1)
+            {
+                e1.printStackTrace();
+            }
         }
 
         return price;
@@ -90,6 +107,14 @@ public class ApiMethods {
 
     public BigDecimal getCurrentSellPrice(String figi)
     {
+        try
+        {
+            Thread.sleep(100);
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
         log.debug("getCurrentSellPrice");
         BigDecimal price = BigDecimal.valueOf(0);
         try {
@@ -104,6 +129,14 @@ public class ApiMethods {
         catch (Exception e)
         {
             e.printStackTrace();
+            try {
+                Thread.sleep(60000);
+            }
+            catch (Exception e1)
+            {
+                e1.printStackTrace();
+            }
+
         }
 
         return price;
@@ -116,6 +149,21 @@ public class ApiMethods {
         if(usersService != null) {
             var accounts = usersService.getAccountsSync();
             var mainAccount = account;
+            /*var limits = api.getOperationsService().getWithdrawLimitsSync(mainAccount);
+            double limitBalance = 0;
+            var moneyListWithdraw = limits.getMoney();
+            for(Money moneyValue : moneyListWithdraw)
+            {
+                if (currency.equals(moneyValue.getCurrency().getCurrencyCode().toLowerCase(Locale.ROOT))) {
+                    log.info("(limits) currency: {}, value: {}", moneyValue.getCurrency(), moneyValue.getValue());
+                    limitBalance = moneyValue.getValue().doubleValue();
+                    limitBalance /= 3;
+                    break;
+                }
+            }*/
+
+
+
 
             var positions = api.getOperationsService().getPositionsSync(mainAccount);
 
@@ -125,7 +173,9 @@ public class ApiMethods {
                 if (currency.equals(moneyValue.getCurrency().getCurrencyCode().toLowerCase(Locale.ROOT))) {
                     log.info("currency: {}, value: {}", moneyValue.getCurrency(), moneyValue.getValue());
                     double balance = moneyValue.getValue().doubleValue();
-                    balance /= 3;
+                    //balance += limitBalance;
+                    balance /= 2;
+                    log.info("Final balance - {}",balance);
                     if (balance > sharePrice) {
                         return true;
                     } else return false;
@@ -138,7 +188,7 @@ public class ApiMethods {
 
 
 
-    public void BuyShareByMarketPrice(String figi)
+    public void BuyShareByMarketPrice(String figi, long quantity)
     {
         log.debug("BuyShareByMarketPrice");
         UsersService usersService = api.getUserService();
@@ -157,14 +207,14 @@ public class ApiMethods {
                 log.info("Buy price -  " + price.getUnits() + "," + price.getNano());
 
                 var orderId = api.getOrdersService()
-                        .postOrderSync(figi, 1, price, OrderDirection.ORDER_DIRECTION_BUY, mainAccount, OrderType.ORDER_TYPE_MARKET,
+                        .postOrderSync(figi, quantity, price, OrderDirection.ORDER_DIRECTION_BUY, mainAccount, OrderType.ORDER_TYPE_MARKET,
                                 UUID.randomUUID().toString()).getOrderId();
                 log.info("Buy order id: {}", orderId);
             }
         }
     }
 
-    public void SellShareByMarketPrice(String figi)
+    public void SellShareByMarketPrice(String figi, long quantity)
     {
         log.debug("SellShareByMarketPrice");
         UsersService usersService = api.getUserService();
@@ -183,7 +233,7 @@ public class ApiMethods {
                 log.info("Sell price -  " + price.getUnits() + "," + price.getNano());
 
                 var orderId = api.getOrdersService()
-                        .postOrderSync(figi, 1, price, OrderDirection.ORDER_DIRECTION_SELL, mainAccount, OrderType.ORDER_TYPE_MARKET,
+                        .postOrderSync(figi, quantity, price, OrderDirection.ORDER_DIRECTION_SELL, mainAccount, OrderType.ORDER_TYPE_MARKET,
                                 UUID.randomUUID().toString()).getOrderId();
                 log.info("Sell order id: {}", orderId);
             }

@@ -42,7 +42,7 @@ public class Strategy {
     List<String> trend_changed_percent;
     List<String> lri_advices;
     List<BigDecimal> trends_line;
-    double border = 0.3;
+    double border = 0.4;
 
     public Strategy(InvestApi investApi, String account)
     {
@@ -56,6 +56,8 @@ public class Strategy {
         all_prices = new HashMap<>();
         api = investApi;
         apiMethods = new ApiMethods(api, account);
+        apiMethods.CheckAvailableMoney("rub",0);
+        apiMethods.CheckAvailableMoney("usd",0);
         shares = downloadShares();
         /*shares = apiMethods.GetAllShares();
         for(Share share : shares)
@@ -195,7 +197,14 @@ public class Strategy {
                 }
                 else
                 {
-                    log.info("Calculated price is less or equal to stop price");
+                    log.info("Calculated price is more or equal to stop price. Calculating..");
+                    while (price.doubleValue() <= buy_price.doubleValue())
+                    {
+                        price = price.add(price.multiply(BigDecimal.valueOf(0.001)));
+                    }
+                    log.info("Setup new stop order with price: {}", price);
+                    apiMethods.CancelStopOrders(position.getFigi());
+                    apiMethods.SetupStopMarket(api, position.getFigi(), price, position.getQuantityLots().longValue());
                 }
             }
         }
@@ -368,7 +377,14 @@ public class Strategy {
                                 }
                                 else
                                 {
-                                    log.info("Calculated price is more or equal to stop price");
+                                    log.info("Calculated price is more or equal to stop price. Calculating..");
+                                    while (price.doubleValue() >= sell_price.doubleValue())
+                                    {
+                                        price = price.subtract(price.multiply(BigDecimal.valueOf(0.001)));
+                                    }
+                                    log.info("Setup new stop order with price: {}", price);
+                                    apiMethods.CancelStopOrders(position.getFigi());
+                                    apiMethods.SetupBuyStopMarket(api, position.getFigi(), price, position.getQuantityLots().abs().longValue());
                                 }
                             }
                         }
@@ -446,6 +462,17 @@ public class Strategy {
             if(third_level_buy.get(ticker) == null) {
                 log.info("Second level: Trend confirmed! Buy! prev price: {}, current price: {}, ticker: {}", prevBuyPrice, price, ticker);
                 //sendToTelegram("Second level: Trend confirmed! Buy! Ticker: " + ticker);
+                sendToTelegram("First level: Trend confirmed! Buy! Ticker: " + ticker);
+                //BuyShare()
+                for(int i=0;i<trends.size();i++)
+                {
+                    Share share = trends.get(i);
+                    if(ticker.equals(share.getTicker()))
+                    {
+                        BuyShare(share,trends_SMA.get(i));
+                        break;
+                    }
+                }
                 third_level_buy.put(ticker, price);
             }
             else second_level_buy.remove(ticker);
@@ -468,6 +495,16 @@ public class Strategy {
             if(third_level_sell.get(ticker) == null) {
                 log.info("Second level: Trend confirmed! Sell! prev price: {}, current price: {}, ticker: {}", prevSellPrice, price, ticker);
                 //sendToTelegram("Second level: Trend confirmed! Sell! Ticker: " + ticker);
+                sendToTelegram("First level: Trend confirmed! Sell! Ticker: " + ticker);
+                for(int i=0;i<trends.size();i++)
+                {
+                    Share share = trends.get(i);
+                    if(ticker.equals(share.getTicker()))
+                    {
+                        SellShare(share,trends_SMA.get(i));
+                        break;
+                    }
+                }
                 third_level_sell.put(ticker, price);
             }
             else second_level_sell.remove(ticker);
@@ -484,6 +521,312 @@ public class Strategy {
         }
     }
 
+    public void CheckTrends3()
+    {
+        log.info("trends size - {}", trends.size());
+        log.info("trends_SMA size - {}", trends_SMA.size());
+        log.info("trends_last_prices size - {}", trends_last_price.size());
+        log.info("lri_advices size - {}",lri_advices.size());
+        log.info("trend_line size - {}",trends_line.size());
+        List<Share> new_trends = new ArrayList<>();
+        List<BigDecimal> new_SMA = new ArrayList<>();
+        List<BigDecimal> new_last_price = new ArrayList<>();
+        List<String> new_lri_advices = new ArrayList<>();
+        List<BigDecimal> new_trend_line = new ArrayList<>();
+        try {
+            for (int i = 0; i < trends.size(); i++) {
+                Share share = trends.get(i);
+                BigDecimal SMA = trends_SMA.get(i);
+                BigDecimal last_price = trends_last_price.get(i);
+                String advice = lri_advices.get(i);
+                BigDecimal trend_line = trends_line.get(i);
+                if (!apiMethods.checkTradingStatus(share.getFigi())) {
+                    new_trends.add(share);
+                    new_SMA.add(SMA);
+                    new_last_price.add(last_price);
+                    new_lri_advices.add(advice);
+                    new_trend_line.add(trend_line);
+                    continue;
+                }
+                try {
+                    Thread.sleep(100);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                BigDecimal price = apiMethods.getLastPrice(share);
+                BigDecimal buy_price = apiMethods.getCurrentBuyPrice(share.getFigi());
+                BigDecimal sell_price = apiMethods.getCurrentSellPrice(share.getFigi());
+                CheckTrendFirstLevelFinished(price,share.getTicker());
+
+
+                if (buy_price == null || sell_price == null) {
+                    new_trends.add(share);
+                    new_SMA.add(SMA);
+                    new_last_price.add(last_price);
+                    new_lri_advices.add(advice);
+                    new_trend_line.add(trend_line);
+                    continue;
+                }
+                if (buy_price.doubleValue() == 0 || sell_price.doubleValue() == 0) {
+                    new_trends.add(share);
+                    new_SMA.add(SMA);
+                    new_last_price.add(last_price);
+                    new_lri_advices.add(advice);
+                    new_trend_line.add(trend_line);
+                    continue;
+                }
+                if(SMA.doubleValue() > last_price.doubleValue() && buy_price.doubleValue() > SMA.doubleValue())
+                {
+
+
+                    if(advice.equals("Buy"))
+                    {
+                        sendToTelegram("Ticker: " + share.getTicker() + ", SMA: " + SMA + ", last price: "
+                                + last_price + ", new_price: " + buy_price + ", LRI advice: " + advice);
+                        first_level_buy.put(share.getTicker(),buy_price);
+                        new_trends.add(share);
+                        new_SMA.add(SMA);
+                        new_last_price.add(last_price);
+                        new_lri_advices.add(advice);
+                        new_trend_line.add(trend_line);
+                        /*boolean result = BuyShare(share,trend_line);
+                        if(!result)
+                        {
+                            new_trends.add(share);
+                            new_SMA.add(SMA);
+                            new_last_price.add(last_price);
+                            new_lri_advices.add(advice);
+                            new_trend_line.add(trend_line);
+                        }*/
+                    }
+                }
+                else if(SMA.doubleValue() < last_price.doubleValue() && sell_price.doubleValue() < SMA.doubleValue())
+                {
+                    if(advice.equals("Sell")) {
+                        sendToTelegram("Ticker: " + share.getTicker() + ", SMA: " + SMA + ", last price: "
+                                + last_price + ", new_price: {} " + sell_price + ", LRI advice: " + advice);
+                        first_level_sell.put(share.getTicker(),sell_price);
+                        new_trends.add(share);
+                        new_SMA.add(SMA);
+                        new_last_price.add(last_price);
+                        new_lri_advices.add(advice);
+                        new_trend_line.add(trend_line);
+                        /*boolean result = SellShare(share,trend_line);
+                        if(!result)
+                        {
+                            new_trends.add(share);
+                            new_SMA.add(SMA);
+                            new_last_price.add(last_price);
+                            new_lri_advices.add(advice);
+                            new_trend_line.add(trend_line);
+                        }*/
+                    }
+                }
+                else
+                {
+                    new_trends.add(share);
+                    new_SMA.add(SMA);
+                    new_last_price.add(last_price);
+                    new_lri_advices.add(advice);
+                    new_trend_line.add(trend_line);
+                }
+
+
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void CheckTrends4()
+    {
+        log.info("trends size - {}", trends.size());
+        log.info("trends_SMA size - {}", trends_SMA.size());
+        log.info("trends_last_prices size - {}", trends_last_price.size());
+        log.info("lri_advices size - {}",lri_advices.size());
+        log.info("trend_line size - {}",trends_line.size());
+        List<Share> new_trends = new ArrayList<>();
+        List<BigDecimal> new_SMA = new ArrayList<>();
+        List<BigDecimal> new_last_price = new ArrayList<>();
+        List<String> new_lri_advices = new ArrayList<>();
+        List<BigDecimal> new_trend_line = new ArrayList<>();
+        try {
+            for (int i = 0; i < trends.size(); i++) {
+                Share share = trends.get(i);
+                BigDecimal SMA = trends_SMA.get(i);
+                BigDecimal last_price = trends_last_price.get(i);
+                String advice = lri_advices.get(i);
+                BigDecimal trend_line = trends_line.get(i);
+                if (!apiMethods.checkTradingStatus(share.getFigi())) {
+                    new_trends.add(share);
+                    new_SMA.add(SMA);
+                    new_last_price.add(last_price);
+                    new_lri_advices.add(advice);
+                    new_trend_line.add(trend_line);
+                    continue;
+                }
+                try {
+                    Thread.sleep(100);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                BigDecimal price = apiMethods.getLastPrice(share);
+                BigDecimal buy_price = apiMethods.getCurrentBuyPrice(share.getFigi());
+                BigDecimal sell_price = apiMethods.getCurrentSellPrice(share.getFigi());
+                CheckTrendFirstLevelFinished(price,share.getTicker());
+                CheckTrendSecondLevel(price,share.getTicker());
+
+
+                if (buy_price == null || sell_price == null) {
+                    new_trends.add(share);
+                    new_SMA.add(SMA);
+                    new_last_price.add(last_price);
+                    new_lri_advices.add(advice);
+                    new_trend_line.add(trend_line);
+                    continue;
+                }
+                if (buy_price.doubleValue() == 0 || sell_price.doubleValue() == 0) {
+                    new_trends.add(share);
+                    new_SMA.add(SMA);
+                    new_last_price.add(last_price);
+                    new_lri_advices.add(advice);
+                    new_trend_line.add(trend_line);
+                    continue;
+                }
+                if(SMA.doubleValue() > last_price.doubleValue() && buy_price.doubleValue() > SMA.doubleValue())
+                {
+
+
+                    if(advice.equals("Buy"))
+                    {
+                        sendToTelegram("Ticker: " + share.getTicker() + ", SMA: " + SMA + ", last price: "
+                                + last_price + ", new_price: " + buy_price + ", LRI advice: " + advice);
+                        first_level_buy.put(share.getTicker(),buy_price);
+                        new_trends.add(share);
+                        new_SMA.add(SMA);
+                        new_last_price.add(last_price);
+                        new_lri_advices.add(advice);
+                        new_trend_line.add(trend_line);
+                        /*boolean result = BuyShare(share,trend_line);
+                        if(!result)
+                        {
+                            new_trends.add(share);
+                            new_SMA.add(SMA);
+                            new_last_price.add(last_price);
+                            new_lri_advices.add(advice);
+                            new_trend_line.add(trend_line);
+                        }*/
+                    }
+                }
+                else if(SMA.doubleValue() < last_price.doubleValue() && sell_price.doubleValue() < SMA.doubleValue())
+                {
+                    if(advice.equals("Sell")) {
+                        sendToTelegram("Ticker: " + share.getTicker() + ", SMA: " + SMA + ", last price: "
+                                + last_price + ", new_price: {} " + sell_price + ", LRI advice: " + advice);
+                        first_level_sell.put(share.getTicker(),sell_price);
+                        new_trends.add(share);
+                        new_SMA.add(SMA);
+                        new_last_price.add(last_price);
+                        new_lri_advices.add(advice);
+                        new_trend_line.add(trend_line);
+                        /*boolean result = SellShare(share,trend_line);
+                        if(!result)
+                        {
+                            new_trends.add(share);
+                            new_SMA.add(SMA);
+                            new_last_price.add(last_price);
+                            new_lri_advices.add(advice);
+                            new_trend_line.add(trend_line);
+                        }*/
+                    }
+                }
+                else
+                {
+                    new_trends.add(share);
+                    new_SMA.add(SMA);
+                    new_last_price.add(last_price);
+                    new_lri_advices.add(advice);
+                    new_trend_line.add(trend_line);
+                }
+
+
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void CheckTrendFirstLevelFinished(BigDecimal price, String ticker)
+    {
+        BigDecimal prevBuyPrice = first_level_buy.get(ticker);
+        if(prevBuyPrice != null)
+            log.info("First level: Checking buy sma's, prev price: {}, current price: {}, ticker: {}",prevBuyPrice,price,ticker);
+        if(prevBuyPrice != null && price.doubleValue() > prevBuyPrice.doubleValue())
+        {
+            if(second_level_buy.get(ticker) == null) {
+                log.info("First level: Trend confirmed! Buy! prev price: {}, current price: {}, ticker: {}", prevBuyPrice, price, ticker);
+                sendToTelegram("First level: Trend confirmed! Buy! Ticker: " + ticker);
+                //BuyShare()
+                for(int i=0;i<trends.size();i++)
+                {
+                    Share share = trends.get(i);
+                    if(ticker.equals(share.getTicker()))
+                    {
+                        BuyShare(share,trends_SMA.get(i));
+                        break;
+                    }
+                }
+                second_level_buy.put(ticker, price);
+            }
+            else first_level_buy.remove(ticker);
+        }
+        else if(prevBuyPrice == null)
+        {
+            //
+        }
+        else if(price.doubleValue() <= prevBuyPrice.doubleValue())
+        {
+            first_level_buy.remove(ticker);
+            //trends.remove(ticker);
+        }
+        BigDecimal prevSellPrice = first_level_sell.get(ticker);
+        if(prevSellPrice != null)
+            log.info("First level: Checking sell sma's, prev price: {}, current price: {}, ticker: {}",prevSellPrice,price,ticker);
+        if(prevSellPrice != null && price.doubleValue() < prevSellPrice.doubleValue())
+        {
+            if(second_level_sell.get(ticker) == null) {
+                log.info("First level: Trend confirmed! Sell! prev price: {}, current price: {}, ticker: {}", prevSellPrice, price, ticker);
+                sendToTelegram("First level: Trend confirmed! Sell! Ticker: " + ticker);
+                for(int i=0;i<trends.size();i++)
+                {
+                    Share share = trends.get(i);
+                    if(ticker.equals(share.getTicker()))
+                    {
+                        SellShare(share,trends_SMA.get(i));
+                        break;
+                    }
+                }
+                second_level_sell.put(ticker, price);
+            }
+            else first_level_sell.remove(ticker);
+        }
+        else if(prevSellPrice == null)
+        {
+            //
+        }
+        else  if(price.doubleValue() >= prevSellPrice.doubleValue())
+        {
+            first_level_sell.remove(ticker);
+            //trends.remove(ticker);
+        }
+    }
+
     public void CheckTrendFirstLevel(BigDecimal price, String ticker)
     {
         BigDecimal prevBuyPrice = first_level_buy.get(ticker);
@@ -494,6 +837,16 @@ public class Strategy {
             if(second_level_buy.get(ticker) == null) {
                 log.info("First level: Trend confirmed! Buy! prev price: {}, current price: {}, ticker: {}", prevBuyPrice, price, ticker);
                 //sendToTelegram("First level: Trend confirmed! Buy! Ticker: " + ticker);
+                //BuyShare()
+                /*for(int i=0;i<trends.size();i++)
+                {
+                    Share share = trends.get(i);
+                    if(ticker.equals(share.getTicker()))
+                    {
+                        BuyShare(share,trends_SMA.get(i));
+                        break;
+                    }
+                }*/
                 second_level_buy.put(ticker, price);
             }
             else first_level_buy.remove(ticker);
@@ -515,6 +868,15 @@ public class Strategy {
             if(second_level_sell.get(ticker) == null) {
                 log.info("First level: Trend confirmed! Sell! prev price: {}, current price: {}, ticker: {}", prevSellPrice, price, ticker);
                 //sendToTelegram("First level: Trend confirmed! Sell! Ticker: " + ticker);
+                /*for(int i=0;i<trends.size();i++)
+                {
+                    Share share = trends.get(i);
+                    if(ticker.equals(share.getTicker()))
+                    {
+                        SellShare(share,trends_SMA.get(i));
+                        break;
+                    }
+                }*/
                 second_level_sell.put(ticker, price);
             }
             else first_level_sell.remove(ticker);
@@ -530,12 +892,17 @@ public class Strategy {
         }
     }
 
-    private void BuyShare(Share share, BigDecimal stopPrice)
+    private boolean BuyShare(Share share, BigDecimal stopPrice)
     {
+        long quantity = 1;
         List<Position> positions = apiMethods.GetShares();
         for (Position position : positions)
         {
-            if(position.getFigi().equals(share.getFigi()) || stopPrice.doubleValue() < 20) return;
+            if(position.getFigi().equals(share.getFigi()) || stopPrice.doubleValue() < 20)
+            {
+                log.info("Buying is not successful. Position already exist or price is lower than 20");
+                return true;
+            }
         }
         BigDecimal price = apiMethods.getCurrentSellPrice(share.getFigi());
         BigDecimal consideration = price.multiply(BigDecimal.valueOf(share.getLot()));
@@ -554,27 +921,47 @@ public class Strategy {
         boolean check_dividents = apiMethods.CheckDividendDate(share.getFigi());
         if(success && spread_check && !check_dividents)
         {
-            apiMethods.BuyShareByMarketPrice(share.getFigi());
-            apiMethods.SetupStopMarket(api,share.getFigi(),stop_price,1);
+
+            BigDecimal consideration2 = price.multiply(BigDecimal.valueOf(share.getLot())).multiply(BigDecimal.valueOf(quantity));
+            boolean increase_quantity = apiMethods.CheckAvailableMoney(share.getCurrency(),consideration2.doubleValue());
+            log.info("increase_quantity: {}", increase_quantity);
+            while (increase_quantity)
+            {
+                log.info("increase_quantity: {}", increase_quantity);
+                quantity++;
+                log.info("quantity: {}", quantity);
+                consideration2 = price.multiply(BigDecimal.valueOf(share.getLot())).multiply(BigDecimal.valueOf(quantity));
+                log.info("consideration: {}", consideration2);
+                increase_quantity = apiMethods.CheckAvailableMoney(share.getCurrency(),consideration2.doubleValue());
+            }
+            sendToTelegram("Ticker: " + share.getTicker() + ", Buy");
+            apiMethods.BuyShareByMarketPrice(share.getFigi(), quantity);
+            apiMethods.SetupStopMarket(api,share.getFigi(),stop_price,quantity);
         }
         else
         {
             log.info("Buying is not successful. Ticker: {}, success value: {}, spread_check value: {}, check_dividents value: {}",
                     share.getTicker(),success, spread_check, check_dividents);
         }
+        return success;
     }
 
 
-    private void SellShare(Share share, BigDecimal stopPrice)
+    private boolean SellShare(Share share, BigDecimal stopPrice)
     {
+        long quantity = 1;
         if(!share.getShortEnabledFlag())
         {
-            return;
+            return true;
         }
         List<Position> positions = apiMethods.GetShares();
         for (Position position : positions)
         {
-            if(position.getFigi().equals(share.getFigi()) || stopPrice.doubleValue() < 20) return;
+            if(position.getFigi().equals(share.getFigi()) || stopPrice.doubleValue() < 20)
+            {
+                log.info("Buying is not successful. Position already exist or price is lower than 20");
+                return true;
+            }
         }
         BigDecimal price = apiMethods.getCurrentBuyPrice(share.getFigi());
         BigDecimal consideration = price.multiply(BigDecimal.valueOf(share.getLot()));
@@ -593,14 +980,27 @@ public class Strategy {
         boolean check_dividents = apiMethods.CheckDividendDate(share.getFigi());
         if(success && spread_check && !check_dividents)
         {
-            apiMethods.SellShareByMarketPrice(share.getFigi());
-            apiMethods.SetupBuyStopMarket(api,share.getFigi(),stop_price,1);
+            BigDecimal consideration2 = price.multiply(BigDecimal.valueOf(share.getLot())).multiply(BigDecimal.valueOf(quantity));
+            boolean increase_quantity = apiMethods.CheckAvailableMoney(share.getCurrency(),consideration2.doubleValue());
+            log.info("increase_quantity: {}", increase_quantity);
+            while (increase_quantity)
+            {
+                log.info("increase_quantity: {}", increase_quantity);
+                quantity++;
+                log.info("quantity: {}", quantity);
+                consideration2 = price.multiply(BigDecimal.valueOf(share.getLot())).multiply(BigDecimal.valueOf(quantity));
+                log.info("consideration: {}", consideration2);
+                increase_quantity = apiMethods.CheckAvailableMoney(share.getCurrency(),consideration2.doubleValue());
+            }
+            apiMethods.SellShareByMarketPrice(share.getFigi(), quantity);
+            apiMethods.SetupBuyStopMarket(api,share.getFigi(),stop_price,quantity);
         }
         else
         {
             log.info("Buying is not successful. Ticker: {}, success value: {}, spread_check value: {}, check_dividents value: {}",
                     share.getTicker(),success, spread_check, check_dividents);
         }
+        return success;
     }
 
 
@@ -1063,6 +1463,179 @@ public class Strategy {
     }
 
 
+    public void CheckTrends2()
+    {
+        log.info("trends size - {}", trends.size());
+        log.info("trends_SMA size - {}", trends_SMA.size());
+        log.info("trends_last_prices size - {}", trends_last_price.size());
+        log.info("lri_advices size - {}",lri_advices.size());
+        log.info("trend_line size - {}",trends_line.size());
+        List<Share> new_trends = new ArrayList<>();
+        List<BigDecimal> new_SMA = new ArrayList<>();
+        List<BigDecimal> new_last_price = new ArrayList<>();
+        List<String> new_lri_advices = new ArrayList<>();
+        List<BigDecimal> new_trend_line = new ArrayList<>();
+        try {
+            BigDecimal[] diffs = new BigDecimal[4];
+            diffs[0] = null;
+            diffs[1] = null;
+            diffs[2] = null;
+            diffs[3] = null;
+            Share[] shares = new Share[4];
+            shares[0] = null;
+            shares[1] = null;
+            shares[2] = null;
+            shares[3] = null;
+            for(int i=0;i<trends.size();i++) {
+                Share share = trends.get(i);
+                BigDecimal SMA = trends_SMA.get(i);
+                BigDecimal last_price = trends_last_price.get(i);
+                String advice = lri_advices.get(i);
+                BigDecimal trend_line = trends_line.get(i);
+                if (!apiMethods.checkTradingStatus(share.getFigi())) {
+                    //new_trends.add(share);
+                    //new_SMA.add(SMA);
+                    //new_last_price.add(last_price);
+                    //new_lri_advices.add(advice);
+                    //new_trend_line.add(trend_line);
+                    continue;
+                }
+                try {
+                    Thread.sleep(100);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                BigDecimal buy_price = apiMethods.getCurrentBuyPrice(share.getFigi());
+                BigDecimal sell_price = apiMethods.getCurrentSellPrice(share.getFigi());
+
+
+                if(buy_price == null || sell_price == null)
+                {
+                    //new_trends.add(share);
+                    //new_SMA.add(SMA);
+                    //new_last_price.add(last_price);
+                    //new_lri_advices.add(advice);
+                    //new_trend_line.add(trend_line);
+                    continue;
+                }
+                if(buy_price.doubleValue() == 0 || sell_price.doubleValue() == 0)
+                {
+                    //new_trends.add(share);
+                    //new_SMA.add(SMA);
+                    //new_last_price.add(last_price);
+                    //new_lri_advices.add(advice);
+                    //new_trend_line.add(trend_line);
+                    continue;
+                }
+                //
+                if(advice.equals("Buy"))
+                {
+
+                    BigDecimal diff = sell_price.subtract(trend_line).divide(sell_price,9,RoundingMode.HALF_UP);
+                    if(diff.doubleValue() > 0) {
+                        for (int j = 0; j < shares.length; j++) {
+                            BigDecimal d = diffs[j];
+                            if (d == null || diff.doubleValue() < d.doubleValue()) {
+                                shares[j] = share;
+                                diffs[j] = diff;
+                            }
+
+                        }
+                    }
+                }
+                //new_trends.add(share);
+                //new_SMA.add(SMA);
+                //new_last_price.add(last_price);
+                //new_lri_advices.add(advice);
+                //new_trend_line.add(trend_line);
+            }
+            log.info("Trend shares:");
+            Boolean[] results = new Boolean[4];
+            for(int i=0;i<shares.length;i++)
+            {
+                log.info("Ticker: {}", shares[i].getTicker());
+                if(shares[i] != null) {
+                    for (int j = 0; j < trends.size(); j++) {
+                        Share share = trends.get(j);
+                        if (shares[i].getTicker().equals(share.getTicker())) {
+                            BigDecimal trend_line = trends_line.get(j);
+                            results[i] = BuyShare(share,trend_line);
+                        }
+                    }
+                }
+            }
+            for(int i=0;i<trends.size();i++)
+            {
+                Share share = trends.get(i);
+                BigDecimal SMA = trends_SMA.get(i);
+                BigDecimal last_price = trends_last_price.get(i);
+                String advice = lri_advices.get(i);
+                BigDecimal trend_line = trends_line.get(i);
+                if (!apiMethods.checkTradingStatus(share.getFigi())) {
+                    new_trends.add(share);
+                    new_SMA.add(SMA);
+                    new_last_price.add(last_price);
+                    new_lri_advices.add(advice);
+                    new_trend_line.add(trend_line);
+                    continue;
+                }
+                try {
+                    Thread.sleep(100);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                BigDecimal buy_price = apiMethods.getCurrentBuyPrice(share.getFigi());
+                BigDecimal sell_price = apiMethods.getCurrentSellPrice(share.getFigi());
+
+
+                if(buy_price == null || sell_price == null)
+                {
+                    new_trends.add(share);
+                    new_SMA.add(SMA);
+                    new_last_price.add(last_price);
+                    new_lri_advices.add(advice);
+                    new_trend_line.add(trend_line);
+                    continue;
+                }
+                if(buy_price.doubleValue() == 0 || sell_price.doubleValue() == 0)
+                {
+                    new_trends.add(share);
+                    new_SMA.add(SMA);
+                    new_last_price.add(last_price);
+                    new_lri_advices.add(advice);
+                    new_trend_line.add(trend_line);
+                    continue;
+                }
+                boolean test = false;
+                /*for(int j=0;j<shares.length;j++) {
+                    if (shares[j] != null && trends.get(i).getTicker().equals(shares[j].getTicker()) && results[j]) {
+                        test = true;
+                        break;
+                    }
+                }*/
+                if(!test)
+                {
+                    new_trends.add(share);
+                    new_SMA.add(SMA);
+                    new_last_price.add(last_price);
+                    new_lri_advices.add(advice);
+                    new_trend_line.add(trend_line);
+                }
+            }
+            lri_advices = new_lri_advices;
+            trends = new_trends;
+            trends_SMA = new_SMA;
+            trends_last_price = new_last_price;
+            trends_line = new_trend_line;
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+    }
+
     public void CheckTrends()
     {
         log.info("trends size - {}", trends.size());
@@ -1133,7 +1706,15 @@ public class Strategy {
                     {
                         sendToTelegram("Ticker: " + share.getTicker() + ", SMA: " + SMA + ", last price: "
                                 + last_price + ", new_price: " + buy_price + ", LRI advice: " + advice);
-                        BuyShare(share,trend_line);
+                        boolean result = BuyShare(share,trend_line);
+                        if(!result)
+                        {
+                            new_trends.add(share);
+                            new_SMA.add(SMA);
+                            new_last_price.add(last_price);
+                            new_lri_advices.add(advice);
+                            new_trend_line.add(trend_line);
+                        }
                     }
                 }
                 else if(SMA.doubleValue() < last_price.doubleValue() && sell_price.doubleValue() < SMA.doubleValue())
@@ -1141,7 +1722,15 @@ public class Strategy {
                     if(advice.equals("Sell")) {
                         sendToTelegram("Ticker: " + share.getTicker() + ", SMA: " + SMA + ", last price: "
                                 + last_price + ", new_price: {} " + sell_price + ", LRI advice: " + advice);
-                        SellShare(share,trend_line);
+                        boolean result = SellShare(share,trend_line);
+                        if(!result)
+                        {
+                            new_trends.add(share);
+                            new_SMA.add(SMA);
+                            new_last_price.add(last_price);
+                            new_lri_advices.add(advice);
+                            new_trend_line.add(trend_line);
+                        }
                     }
                 }
                 else
@@ -1346,6 +1935,14 @@ public class Strategy {
 
 
     public static void sendToTelegram(String message) {
+        try
+        {
+            Thread.sleep(1000);
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
         String urlString = "https://api.telegram.org/bot%s/sendMessage?chat_id=%s&text=%s";
 
         //Add Telegram token (given Token is fake)

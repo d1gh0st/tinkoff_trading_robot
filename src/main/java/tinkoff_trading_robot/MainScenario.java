@@ -4,8 +4,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.tinkoff.piapi.core.InvestApi;
 import ru.tinkoff.piapi.core.UsersService;
+import tinkoff_trading_robot.classes.ApiMethods;
 import tinkoff_trading_robot.classes.Strategy;
 
+import javax.swing.plaf.TableHeaderUI;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -64,33 +66,72 @@ public class MainScenario {
 
             //CERN
             //CSTX
+
+
             //strategyIIS.CheckLinearRegression2("rub");
-            //strategyMain.CheckLinearRegression2("usd");
-
-
             Runnable task1 = new Runnable() {
                 public void run() {
 
+                    strategyIIS.CheckLinearRegression2("rub");
+                    //strategyMain.CheckLinearRegression2("usd");
                     while (true) {
                         try {
                             Date date = new Date();
                             log.info("Date - {}", date);
                             int h = date.getHours();
                             int min = date.getMinutes();
-                            if((h == 11 || h == 17) && min == 1)
+                            /*if(h > 14 && h < 19) {
+                                if ((h == 17) && min == 1) {
+                                    strategyIIS.CheckLinearRegression2("rub");
+                                }
+                                if ((h == 16) && min == 1) {
+                                    strategyMain.CheckLinearRegression2("usd");
+                                }
+                            }
+                            else if(h < 14)
                             {
+                                if ((h == 11) && min == 1) {
+                                    strategyIIS.CheckLinearRegression2("rub");
+                                    strategyMain.CheckLinearRegression2("rub");
+                                }
+                            }
+                            else if(h > 18)
+                            {
+                                if ((h == 20) && min == 1) {
+                                    strategyIIS.CheckLinearRegression2("usd");
+                                    strategyMain.CheckLinearRegression2("usd");
+                                }
+                            }*/
+                            if ((h == 11) && min == 1) {
                                 strategyIIS.CheckLinearRegression2("rub");
                             }
-                            if((h == 16 || h == 20) && min == 1)
-                            {
+                            /*if ((h == 11 || h == 17) && min == 1) {
+                                strategyIIS.CheckLinearRegression2("rub");
+                            }*/
+                            if ((h == 16 || h == 20) && min == 1) {
+                                strategyIIS.CheckLinearRegression2("usd");
                                 strategyMain.CheckLinearRegression2("usd");
                             }
-                            strategyIIS.CheckTrends();
-                            log.info("CheckTrends  IIS Heartbeat");
-                            Thread.sleep(10000);
-                            log.info("CheckTrends  Main Heartbeat");
-                            strategyMain.CheckTrends();
-                            Thread.sleep(10000);
+
+                            //if(h>9 && h <19) {
+                            if(h>9 && h <16) {
+                                strategyIIS.CheckTrends3();
+                                log.info("CheckTrends  IIS Heartbeat");
+                                Thread.sleep(10000);
+                            }
+                            if(h > 15 && h <23) {
+                                log.info("CheckTrends  Main Heartbeat");
+                                strategyMain.CheckTrends3();
+                                Thread.sleep(10000);
+                                strategyIIS.CheckTrends4();
+                                log.info("CheckTrends  IIS Heartbeat");
+                                Thread.sleep(10000);
+                            }
+                            if(h<10 || h> 22)
+                            {
+                                log.info("Sessions are closed");
+                                Thread.sleep(60000);
+                            }
                         } catch (InterruptedException e) {
                             e.printStackTrace();
                         }
@@ -167,7 +208,7 @@ public class MainScenario {
                     Date date = new Date();
                     //log.info("Date - {}", date);
                     int h = date.getHours();
-                    if(h > 14) {
+                    //if(h > 14) {
                         log.info("Run Main CheckSellStrategy");
                         strategyMain.CheckSellStrategy();
                         log.info("=================================================================================================================");
@@ -176,13 +217,13 @@ public class MainScenario {
                         //strategy.BuyStrategy();
                         //log.info("=================================================================================================================");
                         Thread.sleep(60000);
-                    }
-                    if(h > 9 && h < 19) {
+                    //}
+                    //if(h > 9 && h < 19) {
                         log.info("Run IIS CheckSellStrategy");
                         strategyIIS.CheckSellStrategy();
                         log.info("=================================================================================================================");
                         Thread.sleep(60000);
-                    }
+                    //}
                 }
             }
             /*if(args[0].equals("buy"))
